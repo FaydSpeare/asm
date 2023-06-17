@@ -1,13 +1,13 @@
 all: main
 
-main: main.o read_int.o
+main: main.o int_utils.o
 	ld -o main main.o read_int.o
 
-read_int.o: read_int.asm
-	nasm -f elf64 read_int.asm -o read_int.o
+int_utils.o: int_utils.asm
+	nasm -f elf64 int_utils.asm -o int_utils.o
 
 main.o:	main.asm
 	nasm -f elf64 main.asm -o main.o
 
 clean:
-	rm -f read_int.o main.o main
+	rm -f int_utils.o main.o main
