@@ -1,42 +1,43 @@
 section .data
-	buffer db "X_______"
-	buffer_len equ $ - buffer
-	clear db 27, "[H", 27, "[2J"
-	clear_len equ $ - clear
-	timespec_struct:
-		tv_sec  dq 0  ; Seconds
-		tv_nsec dq 100000000  ; Nanoseconds
+    buffer db 1
+    pollfd:
+	fd dd 0
+	events dw 0
+	revents dw 0
 
 section .text
-	global _start
+    global _start
 
-_start:	
-	mov r8, 50000
+_start:
+    mov dword [pollfd], 0
+    mov word [pollfd + 4], 1
 
-loop: 
-	dec r8
-	rol qword [buffer], 8
+poll_loop:
+    mov word [pollfd + 6], 0
 
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, buffer
-	mov rdx, buffer_len
-	syscall
+    mov rax, 7
+    mov rsi, 1
+    mov rdi, pollfd
+    mov rdx, 0
+    syscall
 
-	mov rax, 35
-	mov rdi, timespec_struct
-	syscall
-	
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, clear
-	mov rdx, clear_len
-	syscall
-	
-	cmp r8, 0
-	jne loop
+    cmp word [pollfd+6], 1
+    jne poll_loop
 
-end:	
-	mov rdi, 0
-	mov rax, 60
-	syscall
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, buffer
+    mov rdx, 1
+    syscall
+
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, buffer
+    mov rdx, 1
+    syscall
+    jmp poll_loop
+
+exit_program:
+    mov rax, 60                 
+    xor rdi, rdi                
+    syscall
