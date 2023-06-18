@@ -1,37 +1,42 @@
 section .data
-	buffer db 50 DUP (0)
+	buffer db "X_______"
 	buffer_len equ $ - buffer
+	clear db 27, "[H", 27, "[2J"
+	clear_len equ $ - clear
+	timespec_struct:
+		tv_sec  dq 0  ; Seconds
+		tv_nsec dq 100000000  ; Nanoseconds
 
 section .text
 	global _start
 
 _start:	
-	mov edi, buffer
-	mov al, 70
-	mov ah, 10
-	mov rcx, 25
-	rep stosw
+	mov r8, 50000
 
-	mov rdi, buffer+16
-	mov rax, ' h ... w'
-	mov al, 10
-	ror rax, 8
-	mov rcx, 3
-	rep stosq
-
-	mov rdi, buffer
-	mov eax, " MMM"
-	mov al, 10,
-	ror eax, 8
-	mov rcx, 4
-	rep stosd
+loop: 
+	dec r8
+	rol qword [buffer], 8
 
 	mov rax, 1
 	mov rdi, 1
 	mov rsi, buffer
 	mov rdx, buffer_len
 	syscall
+
+	mov rax, 35
+	mov rdi, timespec_struct
+	syscall
 	
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, clear
+	mov rdx, clear_len
+	syscall
+	
+	cmp r8, 0
+	jne loop
+
+end:	
 	mov rdi, 0
 	mov rax, 60
 	syscall
