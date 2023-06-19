@@ -1,3 +1,5 @@
+extern int_to_string
+
 section .data
     county dd 0
     count dd 0
@@ -23,6 +25,9 @@ section .text
     global _start
 
 _start:
+    call rand2
+    jmp exit_program
+
     mov dword [pollfd], 0
     mov word [pollfd + 4], 1
 
@@ -163,3 +168,77 @@ exit_program:
     mov rax, 60                 
     xor rdi, rdi                
     syscall
+
+rand2:
+    push rbp        ; prologue
+    mov rbp, rsp 
+    sub rsp, 32     ; make space for 32 bytes on the stack
+
+    mov rax, 96            ; sys_gettimeofday
+    lea rdi, [rbp - 16]    ; pass in ptr to 16 bytes (for storing result)
+    syscall         
+    
+    mov rax, [rbp - 8]     ; convert the microseconds to a string
+    lea rbx, [rbp - 32]
+    call int_to_string
+
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [rbp - 32]
+    mov rdx, 16
+    syscall 
+
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, newline
+    mov rdx, 1
+    syscall 
+    
+    mov rdx, 0 
+    mov rax, qword [rbp - 8]
+    mov ecx, 10
+    div ecx
+    push rax
+ 
+    mov qword [rbp - 32], 0
+    mov qword [rbp - 24], 0
+    
+    mov rax, rdx
+    lea rbx, [rbp - 32]
+    call int_to_string
+    
+    add rdx, '0'
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [rbp - 32]
+    mov rdx, 16
+    syscall 
+    
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, newline
+    mov rdx, 1
+    syscall 
+    
+    mov rdx, 0 
+    pop rax
+    mov ecx, 10
+    div ecx
+    
+    mov qword [rbp - 32], 0
+    mov qword [rbp - 24], 0
+    
+    mov rax, rdx
+    lea rbx, [rbp - 32]
+    call int_to_string
+    
+    add rdx, '0'
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [rbp - 32]
+    mov rdx, 16
+    syscall 
+
+    add rsp, 32
+    pop rbp         ; epilogue
+    ret
