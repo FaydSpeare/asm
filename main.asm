@@ -26,8 +26,9 @@ section .text
 
 _start:
     call rand2
-    jmp exit_program
-
+    mov dword [count], eax
+    mov dword [county], ebx
+ 
     mov dword [pollfd], 0
     mov word [pollfd + 4], 1
 
@@ -169,76 +170,34 @@ exit_program:
     xor rdi, rdi                
     syscall
 
+; Function to return two 'random' digits from 0-9.
+; These two digits come from the two least significant
+; digits of the microseconds return by the sys_gettimeofday call.
+; The two digits are return in rax and rbx.
 rand2:
-    push rbp        ; prologue
-    mov rbp, rsp 
-    sub rsp, 32     ; make space for 32 bytes on the stack
+    push rbp        ; save the initial base ptr
+    mov rbp, rsp    ; save the stack ptr
+    sub rsp, 32     ; allocate space for 32 bytes on the stack
 
     mov rax, 96            ; sys_gettimeofday
     lea rdi, [rbp - 16]    ; pass in ptr to 16 bytes (for storing result)
     syscall         
     
-    mov rax, [rbp - 8]     ; convert the microseconds to a string
-    lea rbx, [rbp - 32]
-    call int_to_string
-
-    mov rax, 1
-    mov rdi, 1
-    lea rsi, [rbp - 32]
-    mov rdx, 16
-    syscall 
-
-    mov rax, 1
-    mov rdi, 1
-    lea rsi, newline
-    mov rdx, 1
-    syscall 
-    
-    mov rdx, 0 
-    mov rax, qword [rbp - 8]
+    xor rdx, rdx       ; make sure rdx is clear (for remainder)
+    mov rax, [rbp - 8] ; move the microseconds into rax to be divided
     mov ecx, 10
-    div ecx
-    push rax
+    div ecx            ; divide the microseconds by 10
+    push rdx           ; use remainder as random number 1
  
-    mov qword [rbp - 32], 0
-    mov qword [rbp - 24], 0
-    
-    mov rax, rdx
-    lea rbx, [rbp - 32]
-    call int_to_string
-    
-    add rdx, '0'
-    mov rax, 1
-    mov rdi, 1
-    lea rsi, [rbp - 32]
-    mov rdx, 16
-    syscall 
-    
-    mov rax, 1
-    mov rdi, 1
-    lea rsi, newline
-    mov rdx, 1
-    syscall 
-    
-    mov rdx, 0 
-    pop rax
+    xor rdx, rdx       ; make sure rdx is clear (for remaineder) 
     mov ecx, 10
-    div ecx
+    div ecx            ; divide the result by 10 again
+    push rdx           ; use the remainder as random number 2
     
-    mov qword [rbp - 32], 0
-    mov qword [rbp - 24], 0
-    
-    mov rax, rdx
-    lea rbx, [rbp - 32]
-    call int_to_string
-    
-    add rdx, '0'
-    mov rax, 1
-    mov rdi, 1
-    lea rsi, [rbp - 32]
-    mov rdx, 16
-    syscall 
+    ; store the results in rax and rbx
+    pop rax
+    pop rbx
 
-    add rsp, 32
-    pop rbp         ; epilogue
+    mov rsp, rbp    ; deallocate space made on the stack
+    pop rbp         ; restore the initial base ptr
     ret
