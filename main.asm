@@ -1,64 +1,48 @@
 extern int_to_string
 
 section .data
-    county dd 0
-    count dd 0
-    newline db 10
-    space db " " 
-    x db "H"
-    clear db 27, "[H", 27, "[2J"
-    clear_len equ $ - clear
+	; Some constants to modify terminal configuration
+    SYS_IOCTL dq 16
+    TCGETS dq 0x5401
+    TCSETS dq 0x5402
+
+    ; Some constants to help draw the board
+    TOP db 10, "+----------------------------------------+"
+    ROW db 10, "|                                        |"
+    ROW_LEN equ 43
+    PLAYER db "P"
+    
+    ; Buffer for clearing the terminal
+    CLEAR db 27, "[H", 27, "[2J"
+    CLEAR_LEN equ $ - CLEAR
+    
+    ; Player board position 
+    pos_x dd 0
+    pos_y dd 0
+    
     buffer db 1
     pollfd:
-	fd dd 0
-	events dw 0
-	revents dw 0
-    termios:
-	c_iflag dd 1
-	c_oflag dd 1
-	c_cflag dd 1
-	c_lflag dd 1
-	c_line  db 1
-	c_cc    db 19 
+	    fd dd 0
+	    events dw 0
+	    revents dw 0
 
 section .text
     global _start
 
 _start:
     call rand2
-    mov dword [count], eax
-    mov dword [county], ebx
+    mov dword [pos_y], eax
+    mov dword [pos_x], ebx
  
     mov dword [pollfd], 0
     mov word [pollfd + 4], 1
 
-    sub rsp, 18
- 
-    ; Get current settings
-    mov  eax, 16             ; syscall number: SYS_ioctl
-    mov  edi, 0              ; fd:      STDIN_FILENO
-    mov  esi, 0x5401         ; request: TCGETS
-    mov  rdx, rsp        ; request data
-    syscall
-
-    ; Modify flags
-    and byte [rsp+12], 0FDh  ; Clear ICANON to disable canonical mode
-    
-    ; Write termios structure back
-    mov  eax, 16             ; syscall number: SYS_ioctl
-    mov  edi, 0              ; fd:      STDIN_FILENO
-    mov  esi, 0x5402         ; request: TCSETS
-    mov  rdx, rsp        ; request data
-    syscall
-    
-    add rsp, 18
-
+    call configure_terminal 
     mov rbx, 0
     mov rcx, 0
     
 poll_loop:
-    call clear_term 
-    call print_pos
+    call print_board
     mov word [pollfd + 6], 0
     
     mov rax, 7
@@ -91,84 +75,143 @@ poll_loop:
     jmp poll_loop
 
 _k:
-    mov r8d, dword [count]
+    mov r8d, dword [pos_y]
     sub r8, 1
     mov edx, 0
     cmovs r8d, edx
-    mov dword [count], r8d
+    mov dword [pos_y], r8d
     jmp poll_loop
 
 _j:
-    mov r8d, dword [count]
+    mov r8d, dword [pos_y]
     add r8, 1
-    mov dword [count], r8d  
+    cmp r8, 9
+    mov edx, 9
+    cmovg r8d, edx
+    mov dword [pos_y], r8d  
     jmp poll_loop
 
 _h:
-    mov r9d, dword [county]
+    mov r9d, dword [pos_x]
     sub r9, 1
     mov edx, 0
     cmovs r9d, edx
-    mov dword [county], r9d  
+    mov dword [pos_x], r9d  
     jmp poll_loop
 
 _l:
-    mov r9d, dword [county]
+    mov r9d, dword [pos_x]
     add r9, 1
-    mov dword [county], r9d  
+    cmp r9, 39
+    mov edx, 39
+    cmovg r9d, edx
+    mov dword [pos_x], r9d  
     jmp poll_loop
 
-clear_term:
+clear_terminal:
     mov rax, 1
     mov rdi, 1
-    mov rsi, clear
-    mov rdx, clear_len
+    mov rsi, CLEAR
+    mov rdx, CLEAR_LEN
     syscall
     ret
 
-print_pos:
-    xor r8, r8
-    mov r8d, dword [count]
-    mov r9d, dword [county]
-    cmp r8, 0 
-    je loop_col
+print_row:
+    push rbp
+    mov rbp, rsp
+    sub rsp, ROW_LEN
+    
+    lea rsi, ROW
+    lea rdi, [rbp-ROW_LEN]
+    mov rcx, ROW_LEN 
+    rep movsb
+    
+    mov ebx, dword [pos_y]
+    cmp ebx, eax
+    jne finish_print_row
 
-loop_row:    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, newline 
-    mov rdx, 1
-    syscall
-    
-    dec r8
-    cmp r8, 0
-    jne loop_row
+    mov eax, dword [pos_x]
+    lea rsi, PLAYER
+    lea rdi, [rbp-ROW_LEN+2]
+    add rdi, rax
+    mov rcx, 1
+    rep movsb
 
-loop_col:
-    cmp r9, 0
-    je end_print
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, space
-    mov rdx, 1
-    syscall
-    
-    dec r9
-    jmp loop_col
-    
-end_print: 
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, x
-    mov rdx, 1
-    syscall
+finish_print_row: 
+    lea rsi, [rbp-ROW_LEN]
+    mov rdx, ROW_LEN
+    call print
+
+    mov rsp, rbp
+    pop rbp
     ret
+
+print_board:
+    push rbp
+    mov rbp, rsp
+
+    call clear_terminal
+
+    mov rsi, TOP
+    mov rdx, ROW_LEN
+    call print
     
+    mov rax, 0
+loop_print_row:
+    push rax
+    call print_row
+    pop rax
+    inc rax
+    cmp rax, 10
+    jl loop_print_row
+    
+    mov rsi, TOP
+    mov rdx, ROW_LEN
+    call print
+    
+    mov rsp, rbp
+    pop rbp
+    ret
+ 
 exit_program:
     mov rax, 60                 
     xor rdi, rdi                
     syscall
+
+print:
+    mov rax, 1
+    mov rdi, 1
+    syscall
+    ret
+
+; Function which sets up the terminal so that keys
+; can be read from STDIN without waiting for an <ENTER>
+; key press.
+configure_terminal:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 18 
+
+    ; Get current settings
+    mov eax, SYS_IOCTL      ; syscall number
+    mov edi, 0              ; fd: STDIN
+    mov esi, TCGETS
+    mov rdx, [rbp-18]
+    syscall
+
+    ; Modify flags
+    and byte [rbp-6], 0b11111101  ; Clear ICANON to disable canonical mode
+
+    ; Write termios structure back
+    mov eax, SYS_IOCTL
+    mov edi, 0
+    mov esi, TCSETS
+    mov rdx, [rbp-18]
+    syscall
+   
+    mov rsp, rbp
+    pop rbp
+    ret
 
 ; Function to return two 'random' digits from 0-9.
 ; These two digits come from the two least significant
