@@ -27,6 +27,7 @@ read_int_end:
 
 ; Integer given in %rax
 ; Buffer to write string to in %rbx
+; Returns the number of digits in r8
 int_to_string:
 	push rbp
 	mov rbp, rsp

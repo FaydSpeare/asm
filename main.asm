@@ -24,10 +24,14 @@ section .data
     TCSETS equ 0x5402
     
     ; Some constants to help draw the board
-    TOP db 10, "+----------------------------------------+"
-    ROW db 10, "|                                        |"
-    ROW_LEN equ 43
-    PLAYER db "P"
+    TOP db 10, "▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄", 0
+    TOP_LEN equ $ - TOP
+    ROW db 10, "█                                        █", 0
+    ROW_LEN equ $ - ROW
+    BOT db 10, "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀", 10, 0
+    BOT_LEN equ $ - BOT
+    PLAYER db `\033[0;34mP\033[0m`, 0
+    PLAYER_LEN equ $ - PLAYER
     MAX_X equ 40
     MAX_Y equ 10
     
@@ -38,6 +42,16 @@ section .data
     ; Player board position 
     pos_x dd 0
     pos_y dd 0
+
+    apple_x dd 0
+    apple_y dd 0
+    
+    SCORE_BOARD db "Score: ", 0
+    SCORE_BOARD_LEN equ $ - SCORE_BOARD
+    score dd 0
+    
+    APPLE db `\033[0;31mA\033[0m`, 0
+    APPLE_LEN equ $ - APPLE
     
     input_buffer db 1
     INPUT_LEN equ 1
@@ -46,17 +60,26 @@ section .data
         fd dd 0
         events dw 1
         revents dw 0
+     
+    BLUE_ON db `\033[0;34m`
+    ON_LEN equ $ - BLUE_ON
+    BLUE_OFF db `\033[0m`,10,0
+    OFF_LEN equ $ - BLUE_OFF
 
 section .text
     global _start
 
 _start:
+    call randomize_pos
+    call randomize_apple
     call configure_terminal 
     call randomize_pos
 
 game_loop:
+    call check_found_apple
     call clear_terminal
-    call print_board
+    call print_board 
+    call print_score
     call wait_for_input 
     call read_input
 
@@ -112,6 +135,30 @@ randomize_pos:
     mov dword [pos_x], ebx 
     ret 
 
+randomize_apple:
+    call rand2
+    rol ebx, 2 ; x 4
+    mov dword [apple_y], eax
+    mov dword [apple_x], ebx 
+    ret 
+
+check_found_apple:
+    mov eax, dword [apple_x]
+    mov ebx, dword [pos_x]
+    cmp eax, ebx
+    je check_found_apple_y
+    ret
+check_found_apple_y: 
+    mov eax, dword [apple_y]
+    mov ebx, dword [pos_y]
+    cmp eax, ebx
+    je found_apple
+    ret
+found_apple:
+    add dword [score], 1
+    call randomize_apple
+    ret
+
 wait_for_input:
     ; Clear the space to be filled in by SYS_POLL
     mov word [revents], 0 
@@ -147,20 +194,151 @@ print_row:
     
     mov ebx, dword [pos_y]
     cmp ebx, eax
-    jne finish_print_row
+    je print_player_row
 
-    mov eax, dword [pos_x]
-    lea rsi, PLAYER
-    lea rdi, [rbp-ROW_LEN+2]
-    add rdi, rax
-    mov rcx, 1
-    rep movsb
+    mov ebx, dword [apple_y]
+    cmp ebx, eax
+    je print_apple_row
 
-finish_print_row: 
+print_normal_row: 
     lea rsi, [rbp-ROW_LEN]
     mov rdx, ROW_LEN
     call print
+    jmp end_print_row 
+    
+print_player_row:
 
+    mov ebx, dword [apple_y]
+    cmp ebx, eax
+    je print_apple_player_row
+    
+    lea rsi, [rbp-ROW_LEN]
+    mov edx, dword [pos_x]
+    add edx, 4
+    call print
+
+    mov rsi, PLAYER
+    mov rdx, PLAYER_LEN
+    call print
+    
+    ; We have to be careful here when adding a dword (32 bits)
+    ; to rsi. add esi, dword [pos_x] would clear the high 32 bits
+    ; of rsi. So moving rbp into rsi and then adding pos_x to esi
+    ; would not result in the right value. Instead let's move pos_x
+    ; in first, and then add rbp later.
+    mov esi, dword [pos_x]
+    add rsi, 5-ROW_LEN
+    add rsi, rbp
+    
+    mov edx, ROW_LEN-5
+    sub edx, dword [pos_x]
+    call print
+    jmp end_print_row
+     
+print_apple_row:
+    lea rsi, [rbp-ROW_LEN]
+    mov edx, dword [apple_x]
+    add edx, 4
+    call print
+
+    mov rsi, APPLE
+    mov rdx, APPLE_LEN
+    call print
+    
+    mov esi, dword [apple_x]
+    add rsi, 5-ROW_LEN
+    add rsi, rbp
+    
+    mov edx, ROW_LEN-5
+    sub edx, dword [apple_x]
+    call print
+    jmp end_print_row
+
+print_apple_player_row:
+    mov eax, dword [pos_x]
+    mov edx, dword [apple_x]
+    cmp eax, edx
+    cmovl edx, eax 
+    add edx, 4
+    lea rsi, [rbp-ROW_LEN] 
+    call print
+
+    mov eax, dword [pos_x]
+    mov edx, dword [apple_x]
+    cmp eax, edx
+    jle print_player_first
+
+print_apple_first: 
+    mov rsi, APPLE
+    mov rdx, APPLE_LEN
+    call print
+    jmp print_middle
+
+print_player_first:
+    mov rsi, PLAYER
+    mov rdx, PLAYER_LEN
+    call print
+
+print_middle:
+    mov eax, dword [pos_x]
+    mov edx, dword [apple_x]
+    cmp eax, edx
+    je print_second
+ 
+    ; calculate min(pos_x, apple_x)
+    mov ebx, eax
+    cmp eax, edx
+    cmovg ebx, edx 
+
+    ; calculate max(pos_x, apple_x)
+    mov ecx, eax
+    cmp eax, edx
+    cmovl ecx, edx
+ 
+    mov rsi, rbx
+    add rsi, 5-ROW_LEN
+    add rsi, rbp
+     
+    mov edx, ecx
+    sub edx, ebx
+    sub edx, 1
+    call print
+
+print_second:
+    mov eax, dword [pos_x]
+    mov edx, dword [apple_x]
+    cmp eax, edx
+    je print_rest
+    cmp eax, edx
+    jge print_player_second
+
+print_apple_second: 
+    mov rsi, APPLE
+    mov rdx, APPLE_LEN
+    call print
+    jmp print_rest
+
+print_player_second:
+    mov rsi, PLAYER
+    mov rdx, PLAYER_LEN
+    call print
+
+print_rest:
+    mov eax, dword [pos_x]
+    mov edx, dword [apple_x]
+    cmp eax, edx
+    mov esi, edx 
+    cmovg esi, eax  
+     
+    mov edx, ROW_LEN-5
+    sub edx, esi
+    
+    add rsi, 5-ROW_LEN
+    add rsi, rbp
+    
+    call print
+
+end_print_row: 
     mov rsp, rbp
     pop rbp
     ret
@@ -170,7 +348,7 @@ print_board:
     mov rbp, rsp
 
     mov rsi, TOP
-    mov rdx, ROW_LEN
+    mov rdx, TOP_LEN
     call print
     
     mov rax, 0
@@ -182,14 +360,36 @@ loop_print_row:
     cmp rax, 10
     jl loop_print_row
     
-    mov rsi, TOP
-    mov rdx, ROW_LEN
+    mov rsi, BOT
+    mov rdx, BOT_LEN
     call print
     
     mov rsp, rbp
     pop rbp
     ret
- 
+
+print_score:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 8
+    mov qword [rsp], 0
+    
+    mov rsi, SCORE_BOARD
+    mov rdx, SCORE_BOARD_LEN
+    call print
+
+    mov eax, dword [score]
+    lea rbx, [rbp-8]
+    call int_to_string
+    
+    lea rsi, [rbp-8]
+    mov rdx, 8
+    call print
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
 exit_program:
     mov rax, SYS_EXIT            
     mov rdi, EXIT_OK               
