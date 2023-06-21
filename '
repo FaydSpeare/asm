@@ -1,24 +1,14 @@
 extern int_to_string
 
 section .data
-    
-    SYS_READ equ 0
-    SYS_WRITE equ 1
-    SYS_POLL equ 7
-    SYS_IOCTL equ 16
-    SYS_EXIT equ 60
-    
+
+    SYS_WRITE equ 0
+    SYS_READ equ 1
     STDIN equ 0
     STDOUT equ 1
-    EXIT_OK equ 0
-    POLL_TIMEOUT equ 100
-
-    CHAR_J equ 106
-    CHAR_K equ 107
-    CHAR_H equ 104
-    CHAR_L equ 108
 
     ; Some constants to modify terminal configuration
+    SYS_IOCTL equ 16
     TCGETS equ 0x5401
     TCSETS equ 0x5402
     
@@ -27,8 +17,6 @@ section .data
     ROW db 10, "|                                        |"
     ROW_LEN equ 43
     PLAYER db "P"
-    MAX_X equ 40
-    MAX_Y equ 10
     
     ; Buffer for clearing the terminal
     CLEAR db 27, "[H", 27, "[2J"
@@ -41,89 +29,88 @@ section .data
     buffer db 1
     pollfd:
 	    fd dd 0
-	    events dw 1
+	    events dw 0
 	    revents dw 0
 
 section .text
     global _start
 
 _start:
+    call rand2
+    mov dword [pos_y], eax
+    mov dword [pos_x], ebx
+ 
+    mov dword [pollfd], 0
+    mov word [pollfd + 4], 1
+
     call configure_terminal 
-    call randomize_pos
-
-game_loop:
-    call print_board
-    call wait_for_input
     
+poll_loop:
+    call print_board
+    mov word [pollfd + 6], 0
+    
+    mov rax, 7
+    mov rsi, 1
+    mov rdi, pollfd
+    mov rdx, 100
+    syscall
+    
+    cmp word [pollfd+6], 1
+    jne poll_loop
+    
+    mov rax, 0
+    mov rdi, 0
     mov rsi, buffer
-    call read_char
+    mov rdx, 1
+    syscall
      
-    cmp byte [buffer], CHAR_J
-    je move_down
+    cmp byte [buffer], 106
+    je _j
 
-    cmp byte [buffer], CHAR_K
-    je move_up
+    cmp byte [buffer], 107
+    je _k
 
-    cmp byte [buffer], CHAR_H
-    je move_left
+    cmp byte [buffer], 104
+    je _h
 
-    cmp byte [buffer], CHAR_L
-    je move_right
+    cmp byte [buffer], 108
+    je _l
 
-    jmp game_loop
+    jmp poll_loop
 
-move_up:
+_k:
     mov r8d, dword [pos_y]
     sub r8, 1
     mov edx, 0
     cmovs r8d, edx
     mov dword [pos_y], r8d
-    jmp game_loop
+    jmp poll_loop
 
-move_down:
+_j:
     mov r8d, dword [pos_y]
     add r8, 1
-    cmp r8, MAX_Y-1
-    mov edx, MAX_Y-1
+    cmp r8, 9
+    mov edx, 9
     cmovg r8d, edx
     mov dword [pos_y], r8d  
-    jmp game_loop
+    jmp poll_loop
 
-move_left:
+_h:
     mov r9d, dword [pos_x]
     sub r9, 1
     mov edx, 0
     cmovs r9d, edx
     mov dword [pos_x], r9d  
-    jmp game_loop
+    jmp poll_loop
 
-move_right:
+_l:
     mov r9d, dword [pos_x]
     add r9, 1
-    cmp r9, MAX_X-1
-    mov edx, MAX_X-1
+    cmp r9, 39
+    mov edx, 39
     cmovg r9d, edx
     mov dword [pos_x], r9d  
-    jmp game_loop
-
-randomize_pos:
-    call rand2
-    rol ebx, 2 ; x 4
-    mov dword [pos_y], eax
-    mov dword [pos_x], ebx 
-    ret 
-
-wait_for_input:
-    mov word [pollfd + 6], 0 
-    mov rax, SYS_POLL
-    mov rsi, 1
-    mov rdi, pollfd
-    mov rdx, POLL_TIMEOUT
-    syscall
-    
-    cmp word [pollfd+6], 1
-    jne wait_for_input
-    ret
+    jmp poll_loop
 
 clear_terminal:
     mov rax, 1
@@ -191,21 +178,15 @@ loop_print_row:
     ret
  
 exit_program:
-    mov rax, SYS_EXIT            
-    mov rdi, EXIT_OK               
+    mov rax, 60                 
+    xor rdi, rdi                
     syscall
 
 print:
-    mov rax, SYS_WRITE
-    mov rdi, STDOUT
+    mov rax, 1
+    mov rdi, 1
     syscall
     ret
-
-read_char:
-    mov rax, 0
-    mov rdi, 0
-    mov rdx, 1
-    syscall
 
 ; Function which sets up the terminal so that keys
 ; can be read from STDIN without waiting for an <ENTER>
@@ -215,13 +196,21 @@ configure_terminal:
     mov rbp, rsp
 
     ; Allocate space on the stack for the termios struct
-    ; Not exactly sure how large the termios struct is, 
-    ; it seems to vary. But 36 bytes seems to be enough,
-    ; and we only want to edit the c_lflag which is 12
-    ; bytes from the start of the struct.
-    sub rsp, 36
+    ; The size of this on x86_64 (defined in termios.h)
+    ; appears to be 25 bytes defined like so:
+    ;
+    ; #define NCC 8
+    ; struct termio {
+    ; 	unsigned short c_iflag;		/* input mode flags */
+    ; 	unsigned short c_oflag;		/* output mode flags */
+    ; 	unsigned short c_cflag;		/* control mode flags */
+    ; 	unsigned short c_lflag;		/* local mode flags */
+    ; 	unsigned char c_line;		/* line discipline */
+    ; 	unsigned char c_cc[NCC];	/* control characters */
+    ; };
+    ;
     
-    ; Get current settings
+    sub rsp, 36 ; Get current settings
     mov eax, SYS_IOCTL
     mov edi, STDIN
     mov esi, TCGETS
@@ -253,12 +242,12 @@ rand2:
     mov rbp, rsp    ; save the stack ptr
     sub rsp, 16     ; allocate space for 32 bytes on the stack
 
-    mov rax, 96          ; sys_gettimeofday
-    lea rdi, [rbp-16]    ; pass in ptr to 16 bytes (for storing result)
+    mov rax, 96            ; sys_gettimeofday
+    lea rdi, [rbp - 16]    ; pass in ptr to 16 bytes (for storing result)
     syscall         
     
     xor rdx, rdx       ; make sure rdx is clear (for remainder)
-    mov rax, [rbp-8]   ; move the microseconds into rax to be divided
+    mov rax, [rbp - 8] ; move the microseconds into rax to be divided
     mov ecx, 10
     div ecx            ; divide the microseconds by 10
     push rdx           ; use remainder as random number 1
