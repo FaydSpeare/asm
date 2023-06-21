@@ -11,6 +11,7 @@ section .data
     STDIN equ 0
     STDOUT equ 1
     EXIT_OK equ 0
+    POLLIN equ 1
     POLL_TIMEOUT equ 100
 
     CHAR_J equ 106
@@ -38,11 +39,13 @@ section .data
     pos_x dd 0
     pos_y dd 0
     
-    buffer db 1
+    input_buffer db 1
+    INPUT_LEN equ 1
+
     pollfd:
-	    fd dd 0
-	    events dw 1
-	    revents dw 0
+        fd dd 0
+        events dw 1
+        revents dw 0
 
 section .text
     global _start
@@ -52,24 +55,20 @@ _start:
     call randomize_pos
 
 game_loop:
+    call clear_terminal
     call print_board
-    call wait_for_input
-    
-    mov rsi, buffer
-    call read_char
-     
-    cmp byte [buffer], CHAR_J
+    call wait_for_input 
+    call read_input
+
+handle_input: 
+    cmp byte [input_buffer], CHAR_J
     je move_down
-
-    cmp byte [buffer], CHAR_K
+    cmp byte [input_buffer], CHAR_K
     je move_up
-
-    cmp byte [buffer], CHAR_H
+    cmp byte [input_buffer], CHAR_H
     je move_left
-
-    cmp byte [buffer], CHAR_L
+    cmp byte [input_buffer], CHAR_L
     je move_right
-
     jmp game_loop
 
 move_up:
@@ -114,14 +113,17 @@ randomize_pos:
     ret 
 
 wait_for_input:
-    mov word [pollfd + 6], 0 
+    ; Clear the space to be filled in by SYS_POLL
+    mov word [revents], 0 
+
     mov rax, SYS_POLL
-    mov rsi, 1
+    mov rsi, 1             ; Polling 1 file descriptor
     mov rdi, pollfd
     mov rdx, POLL_TIMEOUT
     syscall
     
-    cmp word [pollfd+6], 1
+    ; Check if there is data to read 
+    cmp word [revents], POLLIN
     jne wait_for_input
     ret
 
@@ -167,8 +169,6 @@ print_board:
     push rbp
     mov rbp, rsp
 
-    call clear_terminal
-
     mov rsi, TOP
     mov rdx, ROW_LEN
     call print
@@ -201,10 +201,11 @@ print:
     syscall
     ret
 
-read_char:
-    mov rax, 0
-    mov rdi, 0
-    mov rdx, 1
+read_input:
+    mov rax, SYS_READ
+    mov rdi, STDIN
+    mov rsi, input_buffer
+    mov rdx, INPUT_LEN
     syscall
 
 ; Function which sets up the terminal so that keys
