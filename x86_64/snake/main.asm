@@ -30,10 +30,13 @@ section .data
     ROW_LEN equ $ - ROW
     BOT db 10, "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀", 10, 0
     BOT_LEN equ $ - BOT
-    PLAYER db `\033[0;34mP\033[0m`, 0
+    PLAYER db `\033[0;104mP\033[0m`, 0
     PLAYER_LEN equ $ - PLAYER
     MAX_X equ 40
     MAX_Y equ 10
+
+    TEST1 db `\33[10;10HHe`
+    TEST_LEN equ $ - TEST1
     
     ; Buffer for clearing the terminal
     CLEAR db 27, "[H", 27, "[2J"
@@ -80,6 +83,9 @@ game_loop:
     call clear_terminal
     call print_board 
     call print_score
+    mov rsi, TEST1
+    mov rdx, TEST_LEN
+    call print
     call wait_for_input 
     call read_input
 
