@@ -18,7 +18,7 @@ fibonacci:
     // fib(1) = 1 
     //
     // To handle the base cases, we simply branch to the end of the function
-    // if n <= 1 as n is already in x0 in that will be the return value too.
+    // if n <= 1 as n is already in x0 and that will be the return value too.
     cmp x0, #1
     ble fib_end
     
@@ -48,6 +48,7 @@ fib_end:
 
 
 _main:
+    // Call fibonacci(8)
     mov x0, #8
     bl fibonacci
     
